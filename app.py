@@ -211,6 +211,7 @@ for section in sorted(set(q["section"] for q in QUESTIONS)):
         responses[q["id"]] = st.radio(
             q["question"],
             options=["Yes", "No"],
+            index=None,
             horizontal=True,
             key=q["id"],
             help=q.get("help"),
@@ -220,6 +221,19 @@ for section in sorted(set(q["section"] for q in QUESTIONS)):
 # Scoring and recommendation
 # -----------------------------
 if st.button("Assess Use Case", type="primary", use_container_width=True):
+    unanswered_questions = [
+        q["question"]
+        for q in QUESTIONS
+        if responses.get(q["id"]) is None
+    ]
+
+    if unanswered_questions:
+        st.error(
+            f"Please answer all questions before assessment. "
+            f"{len(unanswered_questions)} question(s) remain unanswered."
+        )
+        st.stop()
+
     yes = lambda qid: responses[qid] == "Yes"
 
     failed_gates = [
