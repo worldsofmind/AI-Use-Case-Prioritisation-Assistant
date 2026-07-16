@@ -9,9 +9,43 @@ st.set_page_config(
 )
 
 st.title("AI Use Case Prioritisation Assistant")
+
+st.markdown(
+    """
+    ### About this tool
+
+    This application provides a structured assessment of proposed AI, analytics,
+    automation and digital use cases. It considers business value, implementation
+    readiness, delivery capability, and risk and governance before recommending
+    how the use case should be prioritised.
+
+    The assessment result is **a recommendation to support discussion and
+    decision-making**. It does not replace formal business, funding, data,
+    cybersecurity, architecture, procurement or management approvals.
+    """
+)
+
+with st.expander("How to use this app", expanded=True):
+    st.markdown(
+        """
+        1. Enter the basic use case details in the sidebar.
+        2. Answer every assessment question using **Yes**, **I am unsure**, or **No**.
+        3. Select **I am unsure** when the answer has not been confirmed or there is
+           insufficient evidence.
+        4. Move your mouse over the **?** icon beside each question for additional guidance.
+        5. Select **Assess Use Case** to view the recommended status, score,
+           delivery route, clarification needs and priority actions.
+        6. Use the recommendation as a starting point for discussion with the
+           relevant business owner, product owner and technical or governance teams.
+
+        For queries on the use of this application, contact
+        [seet_jun_feng@swda.gov.sg](mailto:seet_jun_feng@swda.gov.sg).
+        """
+    )
+
 st.caption(
-    "Answer Yes or No to assess whether a proposed use case should be piloted now, "
-    "scoped further, placed under foundation work, or held for redesign."
+    "Answer Yes, I am unsure or No to assess whether a proposed use case should "
+    "be piloted now, scoped further, placed under foundation work, or held for redesign."
 )
 
 # -----------------------------
@@ -193,24 +227,58 @@ QUESTIONS = [
 
 MAX_SCORE = sum(q["weight"] for q in QUESTIONS)
 
+ANSWER_OPTIONS = ["Yes", "I am unsure", "No"]
+
+# Scoring multiplier applied to each weighted question.
+# Yes receives full points, I am unsure receives half points, and No receives zero.
+ANSWER_MULTIPLIERS = {
+    "Yes": 1.0,
+    "I am unsure": 0.5,
+    "No": 0.0,
+}
+
 # -----------------------------
 # Inputs
 # -----------------------------
 with st.sidebar:
     st.header("Use Case Details")
-    use_case_name = st.text_input("Use case name", placeholder="e.g. Policy and Rules Assistant")
-    business_unit = st.text_input("Business unit / team", placeholder="e.g. DSPD")
-    owner_name = st.text_input("Proposed business owner", placeholder="Name or role")
-    notes = st.text_area("Brief description", placeholder="What problem is being solved?")
+    use_case_name = st.text_input(
+        "Use case name",
+        placeholder="e.g. Policy and Rules Assistant",
+    )
+    business_unit = st.text_input(
+        "Business unit / team",
+        placeholder="e.g. DSPD",
+    )
+    owner_name = st.text_input(
+        "Proposed business owner",
+        placeholder="Name or role",
+    )
+    notes = st.text_area(
+        "Brief description",
+        placeholder="What problem is being solved?",
+    )
+
+    st.caption(
+        "These details identify the assessment record. "
+        "They do not directly affect the score."
+    )
+
+st.info(
+    "Choose **I am unsure** when the answer has not been confirmed or there is "
+    "insufficient evidence. Uncertain answers receive half points and may prevent "
+    "the use case from being recommended for an immediate pilot."
+)
 
 responses = {}
 
 for section in sorted(set(q["section"] for q in QUESTIONS)):
     st.subheader(section)
+
     for q in [x for x in QUESTIONS if x["section"] == section]:
         responses[q["id"]] = st.radio(
             q["question"],
-            options=["Yes", "No"],
+            options=ANSWER_OPTIONS,
             index=None,
             horizontal=True,
             key=q["id"],
@@ -234,70 +302,178 @@ if st.button("Assess Use Case", type="primary", use_container_width=True):
         )
         st.stop()
 
-    yes = lambda qid: responses[qid] == "Yes"
+    def answer_is(question_id: str, answer: str) -> bool:
+        return responses[question_id] == answer
+
+    def answer_multiplier(question_id: str) -> float:
+        return ANSWER_MULTIPLIERS[responses[question_id]]
 
     failed_gates = [
         q["question"]
         for q in QUESTIONS
-        if q["critical"] and not yes(q["id"])
+        if q["critical"] and answer_is(q["id"], "No")
+    ]
+
+    uncertain_gates = [
+        q["question"]
+        for q in QUESTIONS
+        if q["critical"] and answer_is(q["id"], "I am unsure")
+    ]
+
+    uncertain_questions = [
+        q
+        for q in QUESTIONS
+        if answer_is(q["id"], "I am unsure")
     ]
 
     score = sum(
-        q["weight"]
+        q["weight"] * answer_multiplier(q["id"])
         for q in QUESTIONS
-        if not q["critical"] and yes(q["id"])
+        if not q["critical"]
     )
     score_pct = round((score / MAX_SCORE) * 100)
 
     category_scores = {}
-    for category in ["Value", "Readiness", "Capability", "Risk"]:
-        cat_questions = [q for q in QUESTIONS if q["category"] == category]
-        cat_max = sum(q["weight"] for q in cat_questions)
-        cat_score = sum(q["weight"] for q in cat_questions if yes(q["id"]))
-        category_scores[category] = round((cat_score / cat_max) * 100) if cat_max else 0
 
-    # Status logic
+    for category in ["Value", "Readiness", "Capability", "Risk"]:
+        category_questions = [
+            q for q in QUESTIONS if q["category"] == category
+        ]
+        category_maximum = sum(q["weight"] for q in category_questions)
+        category_score = sum(
+            q["weight"] * answer_multiplier(q["id"])
+            for q in category_questions
+        )
+
+        category_scores[category] = (
+            round((category_score / category_maximum) * 100)
+            if category_maximum
+            else 0
+        )
+
+    readiness_or_risk_uncertainty = any(
+        q["category"] in {"Readiness", "Risk"}
+        and answer_is(q["id"], "I am unsure")
+        for q in QUESTIONS
+    )
+
+    # -----------------------------
+    # Prioritisation status logic
+    # -----------------------------
     if failed_gates:
         status = "Foundation Required"
         status_explanation = (
-            "The use case is not ready for active pilot development because one or more "
-            "mandatory readiness conditions are not yet met."
-        )
-    elif score_pct >= 80 and category_scores["Readiness"] >= 70:
-        status = "Pilot Now"
-        status_explanation = (
-            "The use case has strong value, adequate readiness and manageable delivery risk. "
-            "Proceed to a bounded pilot with human review and agreed success measures."
-        )
-    elif score_pct >= 65:
-        status = "Scope Next"
-        status_explanation = (
-            "The use case is promising but needs targeted scoping before development begins."
-        )
-    elif score_pct >= 50:
-        status = "Foundation Required"
-        status_explanation = (
-            "The use case has potential, but important data, system, workflow, capability or "
-            "governance gaps should be addressed first."
-        )
-    else:
-        status = "Hold or Reframe"
-        status_explanation = (
-            "The current proposition is not sufficiently valuable or ready. Consider narrowing "
-            "the scope, combining it with another use case, or revisiting it later."
+            "One or more mandatory readiness conditions have been answered No. "
+            "The use case should not proceed to active pilot development until "
+            "these foundational gaps are resolved."
         )
 
+    elif score_pct < 50:
+        status = "Hold or Reframe"
+        status_explanation = (
+            "The current proposition does not yet demonstrate sufficient combined "
+            "value, readiness, capability and manageable risk. Narrow, redesign or "
+            "reconsider the use case before investing further."
+        )
+
+    elif uncertain_gates:
+        if score_pct >= 65:
+            status = "Scope Next"
+            status_explanation = (
+                "The use case appears promising, but one or more mandatory readiness "
+                "conditions remain unconfirmed. Resolve these uncertainties before "
+                "seeking approval for a pilot."
+            )
+        else:
+            status = "Foundation Required"
+            status_explanation = (
+                "Mandatory readiness conditions remain unconfirmed and the overall "
+                "score is moderate. Complete the required foundation and clarification "
+                "work before reassessment."
+            )
+
+    elif (
+        score_pct >= 80
+        and category_scores["Readiness"] >= 70
+        and not readiness_or_risk_uncertainty
+    ):
+        status = "Pilot Now"
+        status_explanation = (
+            "The use case has strong value, adequate readiness and manageable delivery "
+            "risk. No readiness or risk question remains uncertain. Proceed to a bounded "
+            "pilot with human review and agreed success measures."
+        )
+
+    elif score_pct >= 65:
+        status = "Scope Next"
+        if readiness_or_risk_uncertainty:
+            status_explanation = (
+                "The use case has a promising score, but uncertainty remains in "
+                "implementation readiness or risk and governance. Clarify these matters "
+                "before an immediate pilot is recommended."
+            )
+        else:
+            status_explanation = (
+                "The use case is promising but needs targeted scoping before "
+                "development begins."
+            )
+
+    else:
+        status = "Foundation Required"
+        status_explanation = (
+            "The use case has potential, but important data, system, workflow, "
+            "capability or governance gaps should be addressed first."
+        )
+
+    # -----------------------------
     # Recommended delivery route
-    if yes("internal_capability") and yes("existing_tools"):
-        delivery_route = "Business/DSPD-led configuration or prototype using existing approved tools"
-    elif not yes("internal_capability") and yes("external_support"):
-        delivery_route = "Collaborative prototype with GovTech, DSAD, intern, polytechnic or university support"
-    elif yes("existing_tools"):
-        delivery_route = "Configure an existing platform with specialist implementation support"
+    # -----------------------------
+    internal_capability = responses["internal_capability"]
+    existing_tools = responses["existing_tools"]
+    external_support = responses["external_support"]
+
+    if internal_capability == "Yes" and existing_tools == "Yes":
+        delivery_route = (
+            "Business/DSPD-led configuration or prototype using existing approved tools"
+        )
+
+    elif internal_capability == "Yes" and existing_tools == "No":
+        delivery_route = (
+            "DSPD-led custom prototype or technical discovery before formal development"
+        )
+
+    elif internal_capability == "No" and external_support == "Yes":
+        delivery_route = (
+            "Collaborative prototype with GovTech, DSAD, intern, polytechnic "
+            "or university support"
+        )
+
+    elif existing_tools == "Yes" and external_support == "Yes":
+        delivery_route = (
+            "Configure an existing approved platform with specialist or partner support"
+        )
+
+    elif "I am unsure" in {
+        internal_capability,
+        existing_tools,
+        external_support,
+    }:
+        delivery_route = (
+            "Delivery route requires clarification of internal capability, "
+            "platform fit and available partner support"
+        )
+
+    elif existing_tools == "Yes":
+        delivery_route = (
+            "Configure an existing platform after securing specialist implementation support"
+        )
+
     else:
         delivery_route = "Formal discovery and system project assessment"
 
-    # Gap recommendations
+    # -----------------------------
+    # Gap and uncertainty recommendations
+    # -----------------------------
     gap_map = {
         "owner": "Confirm a named business owner and pilot users.",
         "problem": "Refine the problem statement, target users and intended outcome.",
@@ -307,7 +483,7 @@ if st.button("Assess Use Case", type="primary", use_container_width=True):
         "low_system_dependency": "Consider a standalone, batch-based or document-based pilot before live integration.",
         "data_available": "Identify the required datasets and address data quality or availability gaps.",
         "rules_clear": "Document and validate the workflow, business rules and decision points.",
-        "existing_tools": "Assess whether AIBots, Pair, GovText, Opus, Plumber, Analytics.gov or another approved platform can meet the need.",
+        "existing_tools": "Assess whether an approved platform can meet the need or whether custom development is required.",
         "internal_capability": "Identify the internal product, business, data and technical skills required.",
         "external_support": "Explore support from GovTech, DSAD, interns, polytechnics, universities or vendors.",
         "manageable_effort": "Reduce the scope to a bounded pilot that can demonstrate value quickly.",
@@ -319,77 +495,125 @@ if st.button("Assess Use Case", type="primary", use_container_width=True):
         "reusable": "Consider whether common components can support other teams or workflows.",
     }
 
-    recommendations = [
+    no_actions = [
         gap_map[q["id"]]
         for q in QUESTIONS
-        if not yes(q["id"]) and q["id"] in gap_map
+        if answer_is(q["id"], "No") and q["id"] in gap_map
     ]
 
+    uncertainty_actions = [
+        f'Obtain evidence and confirm: {q["question"]}'
+        for q in uncertain_questions
+    ]
+
+    # -----------------------------
+    # Display result
+    # -----------------------------
     st.divider()
     st.header("Assessment Result")
 
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
     col1.metric("Recommended Status", status)
     col2.metric("Overall Score", f"{score_pct}/100")
     col3.metric("Mandatory Gates Failed", len(failed_gates))
+    col4.metric("Uncertain Answers", len(uncertain_questions))
 
     st.info(status_explanation)
     st.write("**Recommended delivery route:**", delivery_route)
 
-    chart_df = pd.DataFrame(
+    chart_dataframe = pd.DataFrame(
         {
             "Category": list(category_scores.keys()),
             "Score": list(category_scores.values()),
         }
     ).set_index("Category")
-    st.bar_chart(chart_df)
+
+    st.bar_chart(chart_dataframe)
+
+    if failed_gates:
+        st.subheader("Mandatory Gaps")
+        for failed_gate in failed_gates:
+            st.write(f"- {failed_gate}")
+
+    if uncertain_gates:
+        st.subheader("Unconfirmed Mandatory Conditions")
+        for uncertain_gate in uncertain_gates:
+            st.write(f"- {uncertain_gate}")
+
+    if uncertainty_actions:
+        st.subheader("Clarifications Required")
+        for action in uncertainty_actions:
+            st.write(f"- {action}")
 
     st.subheader("Priority Actions")
-    if recommendations:
-        for item in recommendations[:8]:
-            st.write(f"- {item}")
+
+    if no_actions:
+        for action in no_actions[:8]:
+            st.write(f"- {action}")
+    elif not uncertainty_actions:
+        st.write(
+            "- No major readiness gaps or uncertainties identified. "
+            "Proceed according to the recommended status."
+        )
     else:
-        st.write("- No major readiness gaps identified. Proceed to pilot charter and implementation planning.")
+        st.write(
+            "- No questions were answered No. Resolve the uncertainties listed above."
+        )
 
     st.subheader("Suggested Next Decision")
+
     if status == "Pilot Now":
         st.success(
-            "Approve a bounded pilot, confirm the pilot owner and users, select the delivery platform, "
-            "and agree on the evaluation period and success measures."
-        )
-    elif status == "Scope Next":
-        st.warning(
-            "Conduct a short discovery exercise to resolve the lowest-scoring areas before seeking pilot approval."
-        )
-    elif status == "Foundation Required":
-        st.warning(
-            "Assign owners to close the identified foundation gaps, then reassess the use case."
-        )
-    else:
-        st.error(
-            "Do not start development yet. Reframe the use case around a clearer, smaller and more valuable problem."
+            "Approve a bounded pilot, confirm the pilot owner and users, select the "
+            "delivery platform, and agree on the evaluation period and success measures."
         )
 
+    elif status == "Scope Next":
+        st.warning(
+            "Conduct a focused discovery exercise to resolve uncertain or weak areas "
+            "before seeking pilot approval."
+        )
+
+    elif status == "Foundation Required":
+        st.warning(
+            "Assign owners to close the identified foundation gaps and uncertainties, "
+            "then reassess the use case."
+        )
+
+    else:
+        st.error(
+            "Do not start development yet. Reframe the use case around a clearer, "
+            "smaller and more valuable problem."
+        )
+
+    # -----------------------------
     # Downloadable assessment
-    result_rows = [
-        {
-            "Use Case": use_case_name,
-            "Business Unit": business_unit,
-            "Business Owner": owner_name,
-            "Status": status,
-            "Overall Score": score_pct,
-            "Value Score": category_scores["Value"],
-            "Readiness Score": category_scores["Readiness"],
-            "Capability Score": category_scores["Capability"],
-            "Risk Score": category_scores["Risk"],
-            "Delivery Route": delivery_route,
-            "Description": notes,
-        }
-    ]
-    result_df = pd.DataFrame(result_rows)
+    # -----------------------------
+    result_row = {
+        "Use Case": use_case_name,
+        "Business Unit": business_unit,
+        "Business Owner": owner_name,
+        "Status": status,
+        "Overall Score": score_pct,
+        "Value Score": category_scores["Value"],
+        "Readiness Score": category_scores["Readiness"],
+        "Capability Score": category_scores["Capability"],
+        "Risk Score": category_scores["Risk"],
+        "Mandatory Gates Failed": len(failed_gates),
+        "Mandatory Gates Uncertain": len(uncertain_gates),
+        "Total Uncertain Answers": len(uncertain_questions),
+        "Delivery Route": delivery_route,
+        "Description": notes,
+    }
+
+    for q in QUESTIONS:
+        result_row[f'Response - {q["id"]}'] = responses[q["id"]]
+
+    result_dataframe = pd.DataFrame([result_row])
+
     st.download_button(
         "Download Assessment as CSV",
-        data=result_df.to_csv(index=False).encode("utf-8"),
+        data=result_dataframe.to_csv(index=False).encode("utf-8"),
         file_name="use_case_prioritisation_assessment.csv",
         mime="text/csv",
         use_container_width=True,
