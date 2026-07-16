@@ -43,6 +43,11 @@ with st.expander("How to use this app", expanded=True):
         """
     )
 
+st.caption(
+    "Answer Yes, I am unsure or No to assess whether a proposed use case should "
+    "be piloted now, scoped further, placed under foundation work, or held for redesign."
+)
+
 # -----------------------------
 # Question configuration
 # -----------------------------
@@ -258,12 +263,6 @@ with st.sidebar:
         "These details identify the assessment record. "
         "They do not directly affect the score."
     )
-
-st.info(
-    "Choose **I am unsure** when the answer has not been confirmed or there is "
-    "insufficient evidence. Uncertain answers receive half points and may prevent "
-    "the use case from being recommended for an immediate pilot."
-)
 
 responses = {}
 
