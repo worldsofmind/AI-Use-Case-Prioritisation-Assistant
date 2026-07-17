@@ -432,7 +432,7 @@ if st.button("Assess Use Case", type="primary", use_container_width=True):
 
     elif internal_capability == "Yes" and existing_tools == "No":
         delivery_route = (
-            "DSPD-led custom prototype or technical discovery before formal development"
+            "Business-led custom prototype or technical discovery before formal development"
         )
 
     elif internal_capability == "No" and external_support == "Yes":
