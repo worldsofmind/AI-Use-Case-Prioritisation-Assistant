@@ -397,7 +397,7 @@ The route uses answers to:
 | Key conditions | Recommended route |
 |---|---|
 | Internal capability = Yes and existing tools = Yes | **Business/DSPD-led configuration or prototype using existing approved tools** |
-| Internal capability = Yes and existing tools = No | **DSPD-led custom prototype or technical discovery before formal development** |
+| Internal capability = Yes and existing tools = No | **Business-led custom prototype or technical discovery before formal development** |
 | Internal capability = No and external support = Yes | **Collaborative prototype with GovTech, DSAD, intern, polytechnic or university support** |
 | Existing tools = Yes and external support = Yes | **Configure an existing approved platform with specialist or partner support** |
 | Any key route answer is uncertain and no clearer rule applies | **Delivery route requires clarification** |
