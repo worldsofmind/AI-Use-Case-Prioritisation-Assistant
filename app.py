@@ -4,11 +4,11 @@ import pandas as pd
 
 st.set_page_config(
     page_title="AI Use Case Prioritisation Assistant",
-    page_icon="✅",
+    page_icon="🤖",
     layout="wide",
 )
 
-st.title("AI Use Case Prioritisation Assistant")
+st.title("🤖 AI Use Case Prioritisation Assistant")
 
 st.markdown(
     """
@@ -18,6 +18,10 @@ st.markdown(
     automation and digital use cases. It considers business value, implementation
     readiness, delivery capability, and risk and governance before recommending
     how the use case should be prioritised.
+
+    This prioritisation rubric is adapted from the **NIST AI Risk Management
+    Framework** and **Singapore's Model AI Governance Framework**, and customised
+    for TPG's use-case assessment needs.
 
     The assessment result is **a recommendation to support discussion and
     decision-making**. It does not replace formal business, funding, data,
